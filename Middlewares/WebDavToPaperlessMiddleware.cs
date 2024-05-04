@@ -105,8 +105,6 @@ public class WebDavToPaperlessMiddleware(RequestDelegate? next/*, IOptions<WebDa
     {
         httpResponse.Headers.AcceptRanges = "bytes";
         httpResponse.Headers.ContentLength = 0;
-        var uploadsDirectory = "UploadedFiles";
-        Directory.CreateDirectory(uploadsDirectory);
 
         // File Creation
         if (httpRequest.Headers.ContentLength == 0)

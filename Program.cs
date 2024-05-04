@@ -1,6 +1,5 @@
 using System.Net;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Options;
 using Prometheus;
 using Serilog;
 using Serilog.Events;
