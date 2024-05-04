@@ -1,37 +1,69 @@
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Options;
 using Serilog;
+using WebDavToPaperlessNGX.Options;
 
 namespace WebDavToPaperlessNGX.Middlewares;
 
-public class WebDavToPaperlessMiddleware(RequestDelegate next)
+public class WebDavToPaperlessMiddleware(RequestDelegate? next/*, IOptions<WebDavToPaperlessOptions> options*/)
 {
-    public async Task InvokeAsync(HttpContext httpContext)
+
+    public async Task InvokeAsync(HttpContext httpContext, IOptions<WebDavToPaperlessOptions> options)
     {
         var request = httpContext.Request;
         var response = httpContext.Response;
         
+        // TODO: Segment verification is not optimal. It should be done in a more robust way.
+        if (!request.Path.Value!.Contains($"/{options.Value.PaperlessUrlSegment}"))
+        {
+            Log.Information("Request is NOT for WebDavToPaperless. Calling next middleware.");
+            
+            if (next != null)
+            {
+                await next(httpContext);
+            }
+
+            return;
+        }
+
         switch (request.Method)
         {
             case "PROPFIND" or "GET":
-            {
-                await HandleGetPropfind(response, request);
-                break;
-            }
+                {
+                    await HandleGetPropfind(response, request);
+                    break;
+                }
             case "HEAD":
-            {
-                await HandleHead(response, request);
-                break;
-            }
+                {
+                    await HandleHead(response, request);
+                    break;
+                }
             case "PUT":
-            {
-                await HandleDocumentPut(response, request);
-                break;
-            }
+                {
+                    await HandleDocumentPut(response, request, options);
+                    break;
+                }
+            case "LOCK":
+                {
+                    response.Headers.AcceptRanges = "bytes";
+                    response.Headers.ContentLength = 0;
+                    response.StatusCode = 404;
+                    break;
+                }
+            case "UNLOCK":
+                {
+                    response.Headers.AcceptRanges = "bytes";
+                    response.Headers.ContentLength = 0;
+                    response.StatusCode = 200;
+                    break;
+                }
             default:
-            {
-                await HandleOthers(response, request);
-                break;
-            }
+                {
+                    response.Headers.AcceptRanges = "bytes";
+                    response.Headers.ContentLength = 0;
+                    response.StatusCode = 200;
+                    break;
+                }
         }
     }
 
@@ -69,15 +101,7 @@ public class WebDavToPaperlessMiddleware(RequestDelegate next)
         return Task.CompletedTask;
     }
 
-    private static Task HandleOthers(HttpResponse response, HttpRequest request)
-    {
-        response.Headers.AcceptRanges = "bytes";
-        response.Headers.ContentLength = 0;
-        response.StatusCode = 200;
-        return Task.CompletedTask;
-    }
-
-    private static async Task HandleDocumentPut(HttpResponse httpResponse, HttpRequest httpRequest)
+    private static async Task HandleDocumentPut(HttpResponse httpResponse, HttpRequest httpRequest, IOptions<WebDavToPaperlessOptions> options)
     {
         httpResponse.Headers.AcceptRanges = "bytes";
         httpResponse.Headers.ContentLength = 0;
@@ -99,8 +123,8 @@ public class WebDavToPaperlessMiddleware(RequestDelegate next)
                 PaperlessHelper.CreatePaperlessFormDataContent(httpRequest.Body, optionalData);
 
             using var httpClient = new HttpClient();
-            httpClient.BaseAddress = new Uri("https://paperless.internal.lohmann.io");
-            var authenticationString = $"paperless:MDLNRXcdzDBEiQ";
+            httpClient.BaseAddress = new Uri(options.Value.PaperlessBaseUrl ?? throw new InvalidOperationException("Paperless URL is not set."));
+            var authenticationString = $"{options.Value.PaperlessUser}:{options.Value.PaperlessPassword}";
             var base64EncodedAuthenticationString =
                 Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(authenticationString));
 
@@ -113,16 +137,16 @@ public class WebDavToPaperlessMiddleware(RequestDelegate next)
             if (!responseMessage.IsSuccessStatusCode)
             {
                 httpResponse.StatusCode = 500;
-                Log.Logger.Information("Failed to upload document to Paperless.");
+                Log.Logger.Information("Paperless API: Failed to upload document to Paperless.");
                 return;
             }
 
-            Log.Logger.Information("Successfully uploaded document to Paperless.");
+            Log.Logger.Information("Paperless API: Successfully uploaded document to Paperless.");
             httpResponse.StatusCode = 200;
         }
         catch (Exception e)
         {
-            Log.Logger.Error(e, "Failed to upload document to Paperless.");
+            Log.Logger.Error(e, "Paperless API: Failed to upload document to Paperless.");
             httpResponse.StatusCode = 500;
         }
     }
