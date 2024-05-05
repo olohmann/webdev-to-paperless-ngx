@@ -106,7 +106,7 @@ public class WebDavToPaperlessMiddleware(RequestDelegate? next/*, IOptions<WebDa
         httpResponse.Headers.AcceptRanges = "bytes";
         httpResponse.Headers.ContentLength = 0;
 
-        // File Creation
+        // "Pseudo" File Creation
         if (httpRequest.Headers.ContentLength == 0)
         {
             httpResponse.StatusCode = 201;
@@ -117,25 +117,29 @@ public class WebDavToPaperlessMiddleware(RequestDelegate? next/*, IOptions<WebDa
         try
         {
             var optionalData = new PaperlessDocumentOptionalData();
-            var multipartFormDataContent =
-                PaperlessHelper.CreatePaperlessFormDataContent(httpRequest.Body, optionalData);
+            
 
             using var httpClient = new HttpClient();
             httpClient.BaseAddress = new Uri(options.Value.PaperlessBaseUrl ?? throw new InvalidOperationException("Paperless URL is not set."));
+            
             var authenticationString = $"{options.Value.PaperlessUser}:{options.Value.PaperlessPassword}";
+            
             var base64EncodedAuthenticationString =
                 Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(authenticationString));
-
+            
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/documents/post_document/");
             requestMessage.Headers.Authorization =
                 new AuthenticationHeaderValue("Basic", base64EncodedAuthenticationString);
+            
+            var multipartFormDataContent =
+                PaperlessHelper.CreatePaperlessFormDataContent(httpRequest.Body, optionalData);
             requestMessage.Content = multipartFormDataContent;
             var responseMessage = await httpClient.SendAsync(requestMessage);
 
             if (!responseMessage.IsSuccessStatusCode)
             {
+                Log.Logger.Error($"Paperless API: Failed to upload document to Paperless. Request: {requestMessage.RequestUri}. Response Status Code: {(int)responseMessage.StatusCode}. Reason Phrase: {responseMessage.ReasonPhrase}");
                 httpResponse.StatusCode = 500;
-                Log.Logger.Information("Paperless API: Failed to upload document to Paperless.");
                 return;
             }
 
