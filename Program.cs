@@ -1,5 +1,3 @@
-using System.Net;
-using System.Runtime.InteropServices;
 using Prometheus;
 using Serilog;
 using Serilog.Events;
@@ -23,17 +21,6 @@ Console.CancelKeyPress += (sender, arguments) =>
 
 try
 {
-
-    var isOSX = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-    if (isOSX) // issue with TLS 1.3 on OSX
-    {
-        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-    }
-    else
-    {
-        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls13 | SecurityProtocolType.Tls12;
-    }
-
     var builder = WebApplication.CreateBuilder();
     builder.Services.Configure<WebDavToPaperlessOptions>(builder.Configuration.GetSection(WebDavToPaperlessOptions.SectionName));
     builder.Host.UseSerilog();
