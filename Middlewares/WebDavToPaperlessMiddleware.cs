@@ -141,8 +141,12 @@ public class WebDavToPaperlessMiddleware(RequestDelegate? next/*, IOptions<WebDa
             requestMessage.Headers.Authorization =
                 new AuthenticationHeaderValue("Basic", base64EncodedAuthenticationString);
 
+            using var memoryStream = new MemoryStream();
+            await httpRequest.Body.CopyToAsync(memoryStream);
+            memoryStream.Seek(0, SeekOrigin.Begin);
+
             var multipartFormDataContent =
-                PaperlessHelper.CreatePaperlessFormDataContent(httpRequest.Body, optionalData);
+                PaperlessHelper.CreatePaperlessFormDataContent(memoryStream, optionalData);
             requestMessage.Content = multipartFormDataContent;
 
             Log.Logger.Information(
